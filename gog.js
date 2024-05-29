@@ -93,7 +93,8 @@ try {
   if (!await banner.count()) {
     console.log('Currently no free giveaway!');
   } else {
-    const text = await page.locator('.giveaway-banner__title').innerText();
+    // const text = await page.locator('.giveaway-banner__title').innerText();
+    const text = await page.locator('.giveaway').innerText();
     const title = text.match(/Claim (.*)/)[1];
     const slug = await banner.getAttribute('href');
     const url = `https://gog.com${slug}`;
