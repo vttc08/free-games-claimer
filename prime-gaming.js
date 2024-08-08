@@ -19,7 +19,7 @@ const context = await firefox.launchPersistentContext(cfg.dir.browser, {
   viewport: { width: cfg.width, height: cfg.height },
   locale: 'en-US', // ignore OS locale to be sure to have english text for locators
   recordVideo: cfg.record ? { dir: 'data/record/', size: { width: cfg.width, height: cfg.height } } : undefined, // will record a .webm video for each page navigated; without size, video would be scaled down to fit 800x800
-  recordHar: cfg.record ? { path: `data/record/pg-${datetime()}.har` } : undefined, // will record a HAR file with network requests and responses; can be imported in Chrome devtools
+  recordHar: cfg.record ? { path: `data/record/pg-${filenamify(datetime())}.har` } : undefined, // will record a HAR file with network requests and responses; can be imported in Chrome devtools
   handleSIGINT: false, // have to handle ourselves and call context.close(), otherwise recordings from above won't be saved
 });
 
@@ -97,16 +97,30 @@ try {
     process.exit(1);
   }
 
+  const waitUntilStable = async (f, act) => {
+    let v;
+    while (true) {
+      const v2 = await f();
+      console.log('waitUntilStable', v2);
+      if (v == v2) break;
+      v = v2;
+      await act();
+    }
+  };
+  const scrollUntilStable = async f => waitUntilStable(f, async () => {
+    await page.keyboard.press('End'); // scroll to bottom to show all games
+    await page.waitForLoadState('networkidle'); // wait for all games to be loaded
+    await page.waitForTimeout(5000); // TODO networkidle wasn't enough to load all already collected games
+  });
+
   await page.click('button[data-type="Game"]');
-  await page.keyboard.press('End'); // scroll to bottom to show all games
-  await page.waitForLoadState('networkidle'); // wait for all games to be loaded
-  await page.waitForTimeout(2000); // TODO networkidle wasn't enough to load all already collected games
   const games = page.locator('div[data-a-target="offer-list-FGWP_FULL"]');
   await games.waitFor();
+  await scrollUntilStable(() => games.locator('.item-card__action').count());
   console.log('Number of already claimed games (total):', await games.locator('p:has-text("Collected")').count());
   // can't use .all() since the list of elements via locator will change after click while we iterate over it
-  const internal = await games.locator('.item-card__action:has([data-a-target="FGWPOffer"])').elementHandles();
-  const external = await games.locator('.item-card__action:has([data-a-target="ExternalOfferClaim"])').all();
+  const internal = await games.locator('.item-card__action:has(button[data-a-target="FGWPOffer"])').elementHandles();
+  const external = await games.locator('.item-card__action:has(a[data-a-target="FGWPOffer"])').all();
   // bottom to top: oldest to newest games
   internal.reverse();
   external.reverse();
@@ -196,7 +210,9 @@ try {
         if (store == 'legacy games') { // may be different URL like https://legacygames.com/primeday/puzzleoftheyear/
           redeem[store] = await (await page.$('li:has-text("Click here") a')).getAttribute('href'); // full text: Click here to enter your redemption code.
         }
-        console.log('  URL to redeem game:', redeem[store]);
+        let redeem_url = redeem[store];
+        if (store == 'gog.com') redeem_url += '/' + code; // to log and notify, but can't use for goto below (captcha)
+        console.log('  URL to redeem game:', redeem_url);
         db.data[user][title].code = code;
         let redeem_action = 'redeem';
         if (cfg.pg_redeem) { // try to redeem keys on external stores
@@ -284,8 +300,8 @@ try {
             }
           } else if (store == 'legacy games') {
             await page2.fill('[name=coupon_code]', code);
-            await page2.fill('[name=email]', cfg.pg_email); // TODO option for sep. email?
-            await page2.fill('[name=email_validate]', cfg.pg_email);
+            await page2.fill('[name=email]', cfg.lg_email);
+            await page2.fill('[name=email_validate]', cfg.lg_email);
             await page2.uncheck('[name=newsletter_sub]');
             await page2.click('[type="submit"]');
             try {
@@ -305,7 +321,7 @@ try {
           if (cfg.debug) await page2.pause();
           await page2.close();
         }
-        notify_game.status = `<a href="${redeem[store]}">${redeem_action}</a> ${code} on ${store}`;
+        notify_game.status = `<a href="${redeem_url}">${redeem_action}</a> ${code} on ${store}`;
       } else {
         notify_game.status = `claimed on ${store}`;
         db.data[user][title].status = 'claimed';
@@ -322,8 +338,7 @@ try {
   if (notify_games.length) { // make screenshot of all games if something was claimed
     const p = screenshot(`${filenamify(datetime())}.png`);
     // await page.screenshot({ path: p, fullPage: true }); // fullPage does not make a difference since scroll not on body but on some element
-    await page.keyboard.press('End'); // scroll to bottom to show all games
-    await page.waitForTimeout(1000); // wait for fade in animation
+    await scrollUntilStable(() => games.locator('.item-card__action').count());
     const viewportSize = page.viewportSize(); // current viewport size
     await page.setViewportSize({ ...viewportSize, height: 3000 }); // increase height, otherwise element screenshot is cut off at the top and bottom
     await games.screenshot({ path: p }); // screenshot of all claimed games
@@ -337,17 +352,7 @@ try {
     await loot.waitFor();
 
     process.stdout.write('Loading all DLCs on page...');
-    let n1 = 0;
-    let n2 = 0;
-    do {
-      n1 = n2;
-      n2 = await loot.locator('[data-a-target="item-card"]').count();
-      // console.log(n2);
-      process.stdout.write(` ${n2}`);
-      await page.keyboard.press('End'); // scroll to bottom to show all dlcs
-      await page.waitForLoadState('networkidle'); // did not wait for dlcs to be loaded
-      await page.waitForTimeout(1000);
-    } while (n2 > n1);
+    await scrollUntilStable(() => loot.locator('[data-a-target="item-card"]').count())
 
     console.log('\nNumber of already claimed DLC:', await loot.locator('p:has-text("Collected")').count());
 
