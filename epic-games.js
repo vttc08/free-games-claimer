@@ -156,8 +156,9 @@ try {
   for (const url of urls) {
     if (cfg.time) console.time('claim game');
     await page.goto(url); // , { waitUntil: 'domcontentloaded' });
-    const purcahseBtn = page.locator('aside button').first();
-    const btnText = (await purcahseBtn.innerText()).toLowerCase(); // barrier to block until page is loaded
+    const purchaseBtn = page.locator('button[data-testid="purchase-cta-button"] >> :has-text("e"), :has-text("i")').first(); // when loading, the button text is empty -> need to wait for some text {'get', 'in library', 'requires base game'} -> just wait for e or i to not be too specific; :text-matches("\w+") somehow didn't work - https://github.com/vogler/free-games-claimer/issues/375
+    await purchaseBtn.waitFor();
+    const btnText = (await purchaseBtn.innerText()).toLowerCase(); // barrier to block until page is loaded
 
     // click Continue if 'This game contains mature content recommended only for ages 18+'
     if (await page.locator('button:has-text("Continue")').count() > 0) {
@@ -176,15 +177,22 @@ try {
     }
 
     let title;
+    let bundle_includes;
     if (await page.locator('span:text-is("About Bundle")').count()) {
-      // console.log('  This is a bundle containing: TODO');
       title = (await page.locator('span:has-text("Buy"):left-of([data-testid="purchase-cta-button"])').first().innerText()).replace('Buy ', '');
+      // h1 first didn't exist for bundles but now it does... However h1 would e.g. be 'Fallout® Classic Collection' instead of 'Fallout Classic Collection'
+      try {
+        bundle_includes = await Promise.all((await page.locator('.product-card-top-row h5').all()).map(b => b.innerText()));
+      } catch (e) {
+        console.error('Failed to get "Bundle Includes":', e);
+      }
     } else {
       title = await page.locator('h1').first().innerText();
     }
     const game_id = page.url().split('/').pop();
     db.data[user][game_id] ||= { title, time: datetime(), url: page.url() }; // this will be set on the initial run only!
     console.log('Current free game:', title);
+    if (bundle_includes) console.log('  This bundle includes:', bundle_includes);
     const notify_game = { title, url, status: 'failed' };
     notify_games.push(notify_game); // status is updated below
 
@@ -205,8 +213,8 @@ try {
       urls.push(baseUrl); // add base game to the list of games to claim
       urls.push(url); // add add-on itself again
     } else { // GET
-      console.log('  Not in library yet! Click GET.');
-      await purcahseBtn.click({ delay: 11 }); // got stuck here without delay (or mouse move), see #75, 1ms was also enough
+      console.log('  Not in library yet! Click', btnText);
+      await purchaseBtn.click({ delay: 11 }); // got stuck here without delay (or mouse move), see #75, 1ms was also enough
 
       // click Continue if 'Device not supported. This product is not compatible with your current device.' - avoided by Windows userAgent?
       page.click('button:has-text("Continue")').catch(_ => { }); // needed since change from Chromium to Firefox?
@@ -215,9 +223,11 @@ try {
       page.click('button:has-text("Yes, buy now")').catch(_ => { });
 
       // Accept End User License Agreement (only needed once)
-      page.locator('input#agree').waitFor().then(async () => {
+      page.locator(':has-text("end user license agreement")').waitFor().then(async () => {
         console.log('  Accept End User License Agreement (only needed once)');
-        await page.locator('input#agree').check(); // TODO Bundle: got stuck here
+        console.log(page.innerHTML);
+        console.log('Please report the HTML above here: https://github.com/vogler/free-games-claimer/issues/371');
+        await page.locator('input#agree').check(); // TODO Bundle: got stuck here; likely unrelated to bundle and locator just changed: https://github.com/vogler/free-games-claimer/issues/371
         await page.locator('button:has-text("Accept")').click();
       }).catch(_ => { });
 
@@ -272,7 +282,7 @@ try {
           console.error('  Failed to challenge captcha, please try again later.');
           await notify('epic-games: failed to challenge captcha. Please check.');
         }).catch(_ => { });
-        await page.locator('text=Thanks for your order!').waitFor({ state: 'attached' }); // TODO Bundle: got stuck here
+        await page.locator('text=Thanks for your order!').waitFor({ state: 'attached' }); // TODO Bundle: got stuck here, but normal game now as well
         db.data[user][game_id].status = 'claimed';
         db.data[user][game_id].time = datetime(); // claimed time overwrites failed/dryrun time
         console.log('  Claimed successfully!');
