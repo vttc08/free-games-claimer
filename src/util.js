@@ -110,13 +110,17 @@ export const confirm = o => prompt({ type: 'confirm', message: 'Continue?', ...o
 import { execFile } from 'child_process';
 import { cfg } from './config.js';
 
-export const notify = html => new Promise((resolve, reject) => {
+export const notify = (body, inputFormat = null) => new Promise((resolve, reject) => {
   if (!cfg.notify) {
     if (cfg.debug) console.debug('notify: NOTIFY is not set!');
     return resolve();
   }
-  // const cmd = `apprise '${cfg.notify}' ${title} -i html -b '${html}'`; // this had problems if e.g. ' was used in arg; could have `npm i shell-escape`, but instead using safer execFile which takes args as array instead of exec which spawned a shell to execute the command
-  const args = [cfg.notify, '-i', 'html', '-b', `'${html}'`];
+  const isHtml = inputFormat == 'html' || (!inputFormat && /<[^>]+>/.test(body));
+  // const cmd = `apprise '${cfg.notify}' ${title} -i html -b '${body}'`; // this had problems if e.g. ' was used in arg; could have `npm i shell-escape`, but instead using safer execFile which takes args as array instead of exec which spawned a shell to execute the command
+  const args = [cfg.notify];
+  if (isHtml) args.push('-i', 'html');
+  else if (inputFormat == 'markdown') args.push('-i', 'markdown');
+  args.push('-b', body);
   if (cfg.notify_title) args.push(...['-t', cfg.notify_title]);
   if (cfg.debug) console.debug(`apprise ${args.map(a => `'${a}'`).join(' ')}`); // this also doesn't escape, but it's just for info
   execFile('apprise', args, (error, stdout, stderr) => {
@@ -135,4 +139,23 @@ export const notify = html => new Promise((resolve, reject) => {
 
 export const escapeHtml = unsafe => unsafe.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll('\'', '&#039;');
 
-export const html_game_list = games => games.map(g => `- <a href="${g.url}">${escapeHtml(g.title)}</a> (${g.status})`).join('<br>');
+export const html_game_list = games => games.map(g => {
+  const title = escapeHtml(g.title);
+  const status = escapeHtml(g.status);
+  const url = g.url ? escapeHtml(g.url) : '';
+  return `- <a href="${url}">${title}</a> (${status})${url ? ` - ${url}` : ''}`;
+}).join('<br>');
+
+export const text_game_list = games => games.map(g => {
+  const parts = [`- ${g.title}`];
+  if (g.status) parts.push(`(${g.status})`);
+  if (g.url) parts.push(`\n<${g.url}>`);
+  return parts.join(' ');
+}).join('\n');
+
+export const markdown_game_list = games => games.map(g => {
+  const title = escapeHtml(g.title);
+  const status = escapeHtml(g.status);
+  const url = g.url ? escapeHtml(g.url) : '';
+  return `- [${title}](${url}) (${status})`;
+}).join('\n');

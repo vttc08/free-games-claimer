@@ -1,0 +1,21 @@
+services:
+  epic-oauth:
+    container_name: fgc-epic-oauth
+    build:
+      context: .
+      dockerfile: Dockerfile.epic-oauth
+    image: free-games-claimer-epic-oauth
+    env_file:
+      - .env
+    volumes:
+      - ./data/epic-auth.json:/app/data/epic-auth.json
+      - ./data/epic-free-games-status.json:/app/data/epic-free-games-status.json
+    environment:
+      EPIC_AUTH_FILE: /app/data/epic-auth.json
+      EPIC_OAUTH_REPORT_FILE: /app/data/epic-free-games-status.json
+      # Use the standard Apprise env vars here, or leave unset to disable notifications.
+      # NOTIFY: "mailto://user:pass@example.com"
+      # NOTIFY_TITLE: "Epic OAuth"
+      # For first-time auth in a terminal-attached container:
+      # EPIC_AUTH_MODE: manual
+    restart: "no"

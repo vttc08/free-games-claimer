@@ -76,6 +76,11 @@ Available options/variables and their default values:
 | NOTIFY        	|         	| Notification services to use (Pushover, Slack, Telegram...), see below. [Apprise](https://github.com/caronc/apprise)	|
 | NOTIFY_TITLE  	|         	| Optional title for notifications, e.g. for Pushover.                   	|
 | BROWSER_DIR   	| data/browser	| Directory for browser profile, e.g. for multiple accounts.         	|
+| EPIC_AUTH_MODE | browser | Epic token setup mode: `browser` starts a small auth page, `manual` keeps everything in the terminal. |
+| EPIC_AUTH_LISTEN_HOST | 127.0.0.1 | Host for the Epic auth helper page. |
+| EPIC_AUTH_LISTEN_PORT | 3989 | Port for the Epic auth helper page. |
+| EPIC_AUTH_PUBLIC_BASE_URL | | Public base URL for the Epic auth helper page when using a remote browser. |
+| EPIC_AUTH_FILE | data/epic-auth.json | File used to persist Epic OAuth tokens for read-only library checks. |
 | TIMEOUT       	| 60      	| Timeout for any page action. Should be fine even on slow machines.     	|
 | LOGIN_TIMEOUT 	| 180     	| Timeout for login in seconds. Will wait twice (prompt + manual login). 	|
 | EMAIL         	|         	| Default email for any login.                                           	|
@@ -126,6 +131,95 @@ Beware that storing passwords and OTP keys as clear text may be a security risk.
 
 ### Epic Games Store
 Run `node epic-games` (locally or in Docker).
+
+### Epic Browser Auth
+Run `node epic-auth` to configure Epic OAuth tokens without automating login.
+
+This flow is intended for the new read-only library check path. It opens no Playwright browser and does not attempt to fill credentials, solve captchas, or drive Epic pages.
+
+By default it starts a tiny local auth page:
+
+1. Open the printed local or public auth URL in your desktop browser.
+2. Sign in to Epic in that same browser.
+3. Open the printed Epic auth-code URL.
+4. Paste the returned code, redirect URL, or JSON payload into the auth page.
+
+If you do not want the auth page, set `EPIC_AUTH_MODE=manual` and `node epic-auth` will keep the same flow in the terminal.
+
+### Epic OAuth Single Entry Point
+Run `node epic-oauth.js` to use one Epic-only flow that:
+
+1. reuses or refreshes the saved OAuth token automatically,
+2. falls back to Epic sign-in setup only when needed,
+3. checks current free Epic offers,
+4. compares them against the existing Epic library,
+5. writes a container-friendly report to `data/epic-free-games-status.json`.
+
+For remote Docker/container usage, prefer:
+
+```bash
+EPIC_AUTH_MODE=manual node epic-oauth.js
+```
+
+If you already have a code from Epic's auth endpoint, you can bootstrap and check in one command:
+
+```bash
+node epic-oauth.js --code 'PASTE_CODE_HERE'
+```
+
+If you only want to ensure auth is configured and refreshed without checking current offers:
+
+```bash
+node epic-oauth.js --auth-only
+```
+
+The Epic OAuth entry point understands these environment variables:
+
+| Option | Default | Description |
+|---|---:|---|
+| `NOTIFY` | unset | Apprise notification targets for this script. |
+| `NOTIFY_TITLE` | unset | Optional Apprise notification title for this script. |
+| `EPIC_OAUTH_REPORT_FILE` | `data/epic-free-games-status.json` | JSON report written after each check. |
+| `EPIC_AUTH_MODE` | `browser` | `browser` opens the local helper page, `manual` keeps auth in the terminal. |
+| `EPIC_AUTH_LISTEN_HOST` | `127.0.0.1` | Host used by the helper page when `EPIC_AUTH_MODE=browser`. |
+| `EPIC_AUTH_LISTEN_PORT` | `3989` | Port used by the helper page when `EPIC_AUTH_MODE=browser`. |
+| `EPIC_AUTH_PUBLIC_BASE_URL` | unset | Public URL to print when the helper page is reachable from another machine. |
+| `EPIC_AUTH_FILE` | `data/epic-auth.json` | OAuth token file used by the Epic library check. |
+
+### Epic Docker Image
+For a lightweight container image without Playwright or any browser runtime, build the dedicated Epic OAuth image:
+
+```bash
+docker build -f Dockerfile.epic-oauth -t free-games-claimer-epic-oauth .
+```
+
+Then run it through the dedicated compose file:
+
+```bash
+docker compose -f docker-compose.epic-oauth.yml up --build
+```
+
+The container persists OAuth and report data in the `data/` directory via individual file mounts. Create the files on the host first so they keep host ownership:
+
+```bash
+touch data/epic-auth.json data/epic-free-games-status.json
+```
+
+For the first interactive auth bootstrap inside a container, run with `EPIC_AUTH_MODE=manual` and attach a TTY.
+
+Set these env vars in compose or at runtime:
+
+```bash
+NOTIFY=
+NOTIFY_TITLE=
+EPIC_AUTH_FILE=/app/data/epic-auth.json
+EPIC_OAUTH_REPORT_FILE=/app/data/epic-free-games-status.json
+```
+
+### Epic Library Check
+Run `node epic-games-library` to compare the current Epic free offers against the games already present in your Epic library.
+
+This flow uses the tokens saved by `node epic-auth`, queries Epic's library API directly, and sends notifications only for free offers that are not already in your library.
 
 ### Amazon Prime Gaming
 Run `node prime-gaming` (locally or in Docker).

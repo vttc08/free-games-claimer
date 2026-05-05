@@ -28,6 +28,18 @@ export const cfg = {
       screenshots: process.env.SCREENSHOTS_DIR || dataDir('screenshots'), // set to 0 to disable screenshots
     };
   },
+  get epic() { // avoids ReferenceError: Cannot access 'dataDir' before initialization
+    return {
+      auth_mode: process.env.EPIC_AUTH_MODE || 'browser',
+      auth_host: process.env.EPIC_AUTH_LISTEN_HOST || '127.0.0.1',
+      auth_port: Number(process.env.EPIC_AUTH_LISTEN_PORT) || 3989,
+      auth_public_base_url: process.env.EPIC_AUTH_PUBLIC_BASE_URL,
+      auth_file: process.env.EPIC_AUTH_FILE || dataDir('epic-auth.json'),
+    };
+  },
+  get epic_oauth_report_file() { // avoids ReferenceError: Cannot access 'dataDir' before initialization
+    return process.env.EPIC_OAUTH_REPORT_FILE || dataDir('epic-free-games-status.json');
+  },
   // auth epic-games
   eg_email: process.env.EG_EMAIL || process.env.EMAIL,
   eg_password: process.env.EG_PASSWORD || process.env.PASSWORD,
