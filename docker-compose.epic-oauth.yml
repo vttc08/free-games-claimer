@@ -1,21 +1,22 @@
 services:
   epic-oauth:
     container_name: fgc-epic-oauth
-    build:
-      context: .
-      dockerfile: Dockerfile.epic-oauth
-    image: free-games-claimer-epic-oauth
+    image: vttc08/free-games-claimer:latest
     env_file:
       - .env
     volumes:
-      - ./data/epic-auth.json:/app/data/epic-auth.json
-      - ./data/epic-free-games-status.json:/app/data/epic-free-games-status.json
+      - ./data:/app/data
     environment:
       EPIC_AUTH_FILE: /app/data/epic-auth.json
       EPIC_OAUTH_REPORT_FILE: /app/data/epic-free-games-status.json
+      EPIC_AUTH_MODE: browser
+      EPIC_AUTH_LISTEN_HOST: 0.0.0.0
+      EPIC_AUTH_LISTEN_PORT: 3989
+      # Set this when accessing the auth page from another machine/browser.
+      # EPIC_AUTH_PUBLIC_BASE_URL: http://your-server:3989
       # Use the standard Apprise env vars here, or leave unset to disable notifications.
       # NOTIFY: "mailto://user:pass@example.com"
       # NOTIFY_TITLE: "Epic OAuth"
-      # For first-time auth in a terminal-attached container:
-      # EPIC_AUTH_MODE: manual
+    ports:
+      - "3989:3989"
     restart: "no"

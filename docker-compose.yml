@@ -1,15 +1,22 @@
-# start with `docker compose up`
 services:
-  free-games-claimer:
-    container_name: fgc # is printed in front of every output line
-    image: ghcr.io/vogler/free-games-claimer # otherwise image name will be free-games-claimer-free-games-claimer
-    build: .
-    ports:
-      # - "5900:5900" # VNC server
-      - "6080:6080" # noVNC (browser-based VNC client)
+  epic-oauth:
+    container_name: fgc-epic-oauth
+    image: vttc08/free-games-claimer:latest
+    restart: "no"
+    env_file:
+      - .env
     volumes:
-      - fgc:/fgc/data
-    # command: bash -c "node epic-games; node gog"
+      - ./data:/app/data
     environment:
-      # - EMAIL=foo@bar.org
-      # - NOTIFY='tgram://...'
+      EPIC_AUTH_FILE: /app/data/epic-auth.json
+      EPIC_OAUTH_REPORT_FILE: /app/data/epic-free-games-status.json
+      EPIC_AUTH_MODE: browser
+      EPIC_AUTH_LISTEN_HOST: 0.0.0.0
+      EPIC_AUTH_LISTEN_PORT: 3989
+      # Set this when accessing the auth page from another machine/browser.
+      # EPIC_AUTH_PUBLIC_BASE_URL: http://your-server:3989
+      # Optional notifications:
+      # NOTIFY: "mailto://user:pass@example.com"
+      # NOTIFY_TITLE: "Epic OAuth"
+    ports:
+      - "3989:3989"

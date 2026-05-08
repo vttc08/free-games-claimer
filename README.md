@@ -2,7 +2,6 @@
 <img alt="logo-free-games-claimer" src="https://user-images.githubusercontent.com/493741/214588518-a4c89998-127e-4a8c-9b1e-ee4a9d075715.png" />
 </p>
 
-[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=vogler_free-games-claimer&metric=code_smells)](https://sonarcloud.io/project/overview?id=vogler_free-games-claimer)
 # free-games-claimer
 
 Claims free games periodically on
@@ -23,13 +22,24 @@ Raspberry Pi (3, 4, Zero 2): [requires 64-bit OS](https://github.com/vogler/free
 ## How to run
 Easy option: [install Docker](https://docs.docker.com/get-docker/) (or [podman](https://podman-desktop.io/)) and run this command in a terminal:
 ```
-docker run --rm -it -p 6080:6080 -v fgc:/fgc/data --pull=always ghcr.io/vogler/free-games-claimer
+docker run --rm -it -p 3989:3989 -v "$PWD/data:/app/data" --pull=always vttc08/free-games-claimer
 ```
 
-_This currently gives you a captcha challenge for epic-games. Until [issue #183](https://github.com/vogler/free-games-claimer/issues/183) is fixed, it is recommended to just run `node epic-games` without docker (see below)._
+Or use the included compose file:
 
-This will run `node epic-games; node prime-gaming; node gog` - if you only want to claim games for one of the stores, you can override the default command by appending e.g. `node epic-games` at the end of the `docker run` command, or if you want several `bash -c "node epic-games.js; node gog.js"`.
-Data (including json files with claimed games, codes to redeem, screenshots) is stored in the Docker volume `fgc`.
+```bash
+mkdir -p data
+docker compose up
+```
+
+The published Docker image is the lightweight Epic OAuth flow. It does not run Playwright, VNC, or browser automation inside the container. Instead it:
+
+1. reuses or refreshes saved Epic OAuth tokens,
+2. checks the current free Epic offers,
+3. compares them against your Epic library,
+4. writes the report to `data/epic-free-games-status.json`.
+
+The container stores OAuth and report files in `./data`.
 
 <details>
   <summary>I want to run without Docker or develop locally.</summary>
@@ -48,10 +58,9 @@ If you don't want to use Docker for quasi-headless mode, you could run inside a 
 </details>
 
 ## Usage
-All scripts start an automated Firefox instance, either with the browser GUI shown or hidden (*headless mode*). By default, you won't see any browser open on your host system.
+The published Docker image is Epic OAuth only and opens no automated browser. The local Node.js scripts such as `node epic-games`, `node prime-gaming`, and `node gog` still use Playwright/Firefox.
 
-- When running inside Docker, the browser will be shown only inside the container. You can open http://localhost:6080 to interact with the browser running inside the container via noVNC (or use other VNC clients on port 5900).
-- When running the scripts outside of Docker, the browser will be hidden by default; you can use `SHOW=1 ...` to show the UI (see options below).
+When running the Playwright-based scripts outside Docker, the browser will be hidden by default; you can use `SHOW=1 ...` to show the UI (see options below).
 
 When running the first time, you have to login for each store you want to claim games on.
 You can login indirectly via the terminal or directly in the browser. The scripts will wait until you are successfully logged in.
@@ -187,31 +196,32 @@ The Epic OAuth entry point understands these environment variables:
 | `EPIC_AUTH_FILE` | `data/epic-auth.json` | OAuth token file used by the Epic library check. |
 
 ### Epic Docker Image
-For a lightweight container image without Playwright or any browser runtime, build the dedicated Epic OAuth image:
+The default `docker-compose.yml` deploys the published production image from Docker Hub:
 
 ```bash
-docker build -f Dockerfile.epic-oauth -t free-games-claimer-epic-oauth .
+mkdir -p data
+docker compose up
 ```
 
-Then run it through the dedicated compose file:
+That compose file already includes the Epic OAuth settings and persists data in `./data`.
+
+If you prefer `docker run`, use:
 
 ```bash
-docker compose -f docker-compose.epic-oauth.yml up --build
+docker run --rm -it -p 3989:3989 -v "$PWD/data:/app/data" --pull=always vttc08/free-games-claimer
 ```
 
-The container persists OAuth and report data in the `data/` directory via individual file mounts. Create the files on the host first so they keep host ownership:
+For the first interactive auth bootstrap inside a container, set `EPIC_AUTH_MODE=manual` and attach a TTY. The default compose file uses `browser` mode and exposes port `3989` for the helper page.
 
-```bash
-touch data/epic-auth.json data/epic-free-games-status.json
-```
-
-For the first interactive auth bootstrap inside a container, run with `EPIC_AUTH_MODE=manual` and attach a TTY.
-
-Set these env vars in compose or at runtime:
+Set these env vars in compose, `.env`, or at runtime:
 
 ```bash
 NOTIFY=
 NOTIFY_TITLE=
+EPIC_AUTH_MODE=browser
+EPIC_AUTH_LISTEN_HOST=0.0.0.0
+EPIC_AUTH_LISTEN_PORT=3989
+# EPIC_AUTH_PUBLIC_BASE_URL=http://your-server:3989
 EPIC_AUTH_FILE=/app/data/epic-auth.json
 EPIC_OAUTH_REPORT_FILE=/app/data/epic-free-games-status.json
 ```
